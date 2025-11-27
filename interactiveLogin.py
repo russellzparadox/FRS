@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import getpass
 import html
 import json
 import re
@@ -11,15 +8,13 @@ import jdatetime
 import requests
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Static
+from textual.widgets import Button, DataTable, Footer, Header, Input, Static
 
 requests.packages.urllib3.disable_warnings()
 
-USERNAME = "40466241004"
-PASSWORD = "@AHm59wtu"
 BASE_API = "https://frs.modares.ac.ir/api/v0/Reservation"
 
 
