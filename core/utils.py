@@ -15,7 +15,7 @@ def get_shamsi_saturday() -> jdatetime.date:
 def format_price(price: int) -> str:
     if not price:
         return "رایگان"
-    return f"{int(price):,} تومان".replace(",", "٬")
+    return f"{int(price / 10):,} تومان".replace(",", "٬")
 
 
 def escape(text: str) -> str:

@@ -9,12 +9,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("منوی غذا — دانشگاه تربیت مدرس")
-        self.resize(1100, 650)
+        self.resize(1150, 700)
 
         self.client = FRSClient()
         self.base_saturday = get_shamsi_saturday()
         self.current_offset = 0
         self.week_data = []
+        self.checkboxes = []  # (checkbox, price, meal_info)
 
         self._setup_ui()
         self._connect_signals()
@@ -24,23 +25,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         layout = QtWidgets.QVBoxLayout(central)
 
-        # کنترل‌ها
+        # کنترل‌های بالا
         controls = QtWidgets.QHBoxLayout()
         self.prev_btn = QtWidgets.QPushButton("◀ هفته قبل")
         self.current_btn = QtWidgets.QPushButton("هفته جاری")
         self.next_btn = QtWidgets.QPushButton("هفته بعد ▶")
         for btn in (self.prev_btn, self.current_btn, self.next_btn):
-            btn.setFixedHeight(36)
+            btn.setFixedHeight(38)
+            btn.setStyleSheet("font-size: 14px;")
         controls.addWidget(self.prev_btn)
         controls.addWidget(self.current_btn)
         controls.addWidget(self.next_btn)
         controls.addStretch()
         layout.addLayout(controls)
 
-        # جدول + جزئیات
+        # جدول + پنل راست
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         layout.addWidget(splitter, 1)
 
+        # جدول منو
         self.table = QtWidgets.QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["روز", "تاریخ", "صبحانه", "ناهار", "شام"])
         header = self.table.horizontalHeader()
@@ -61,14 +64,41 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         splitter.addWidget(self.table)
 
+        # پنل راست: جزئیات + جمع قیمت
         right = QtWidgets.QWidget()
         right_layout = QtWidgets.QVBoxLayout(right)
+
         self.details = QtWidgets.QTextEdit()
         self.details.setReadOnly(True)
-        self.details.setStyleSheet("font-size: 13px;")
-        right_layout.addWidget(self.details)
+        self.details.setStyleSheet("font-size: 13px; background:#fdfdfd;")
+        right_layout.addWidget(self.details, 1)
+
+        # جمع قیمت
+        summary_frame = QtWidgets.QFrame()
+        summary_frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        summary_frame.setStyleSheet(
+            "QFrame { background:#f9f9f9; border-top: 2px solid #d33682; }"
+        )
+        summary_layout = QtWidgets.QHBoxLayout(summary_frame)
+        summary_layout.setContentsMargins(12, 10, 12, 10)
+
+        self.summary_label = QtWidgets.QLabel("غذا انتخاب نشده")
+        self.summary_label.setStyleSheet(
+            "font-size: 15px; font-weight: bold; color: #d33682;"
+        )
+        summary_layout.addWidget(self.summary_label)
+
+        summary_layout.addStretch()
+
+        self.reset_btn = QtWidgets.QPushButton("ریست انتخاب‌ها")
+        self.reset_btn.setFixedHeight(34)
+        self.reset_btn.setStyleSheet("font-weight: bold;")
+        self.reset_btn.clicked.connect(self.reset_selections)
+        summary_layout.addWidget(self.reset_btn)
+
+        right_layout.addWidget(summary_frame)
         splitter.addWidget(right)
-        splitter.setSizes([750, 350])
+        splitter.setSizes([780, 370])
 
         self.statusBar().showMessage("آماده")
 
@@ -79,12 +109,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.table.cellClicked.connect(self.on_cell_clicked)
 
         # کلیدهای میانبر
-        for key, slot in [
+        shortcuts = [
             ("q", self.close),
             ("n", self.next_week),
             ("p", self.prev_week),
             ("c", self.current_week),
-        ]:
+            ("r", self.reset_selections),
+        ]
+        for key, slot in shortcuts:
             QtGui.QShortcut(QtGui.QKeySequence(key), self, activated=slot)
 
     def load_week(self):
@@ -98,16 +130,21 @@ class MainWindow(QtWidgets.QMainWindow):
             self.update_title()
             self.statusBar().showMessage("منو با موفقیت بارگذاری شد", 5000)
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "خطا", f"دریافت منو失敗: {e}")
+            QtWidgets.QMessageBox.critical(self, "خطا", f"دریافت منو ناموفق بود:\n{e}")
             self.statusBar().showMessage("خطا در بارگذاری")
 
     def update_table(self):
+        # پاک کردن چک‌باکس‌های قبلی
+        for cb, _, _ in self.checkboxes:
+            cb.setParent(None)
+        self.checkboxes.clear()
+        self.reset_selections()
+
         self.table.setRowCount(0)
         for day in self.week_data:
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # ذخیره تاریخ برای جزئیات
             date_item = QtWidgets.QTableWidgetItem(day.get("DayDate", ""))
             date_item.setData(QtCore.Qt.ItemDataRole.UserRole, day.get("DayDate"))
             self.table.setItem(
@@ -125,37 +162,102 @@ class MainWindow(QtWidgets.QMainWindow):
                 meal = next(
                     (m for m in day["Meals"] if m.get("MealName") == meal_name), None
                 )
-                html = self.render_meal(
-                    meal, reserved.get(meal_name), day.get("DayState") == 2
+                widget = self.render_meal_widget(
+                    meal,
+                    reserved.get(meal_name),
+                    day.get("DayState") == 2,
+                    day,
+                    meal_name,
                 )
-                label = QtWidgets.QLabel(html)
-                label.setTextFormat(QtCore.Qt.TextFormat.RichText)
-                label.setWordWrap(True)
-                label.setContentsMargins(6, 4, 6, 4)
-                self.table.setCellWidget(row, col, label)
+                self.table.setCellWidget(row, col, widget)
 
         self.table.resizeRowsToContents()
 
-    def render_meal(self, meal, reserved, inactive=False):
+    def render_meal_widget(
+        self, meal, reserved, inactive=False, day=None, meal_name=None
+    ):
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(5)
+
         if not meal or not meal.get("FoodMenu"):
-            text = "—"
-        elif reserved:
-            text = f'<span style="color:green;font-weight:bold">●</span> {escape(reserved["FoodName"])} ({escape(reserved["SelfName"])})'
-        else:
-            items = []
-            for food in meal["FoodMenu"]:
-                price = food["SelfMenu"][0]["Price"] if food.get("SelfMenu") else 0
-                short = food["FoodName"].split("+")[0].strip()
-                items.append(f"{escape(short)} <small>({format_price(price)})</small>")
-            text = " | ".join(items) or "—"
+            lbl = QtWidgets.QLabel("—")
+            lbl.setStyleSheet("color:#999;")
+            layout.addWidget(lbl)
+            return container
+
+        if reserved:
+            text = f'<span style="color:green;font-weight:bold">● رزرو شده:</span> {escape(reserved["FoodName"])} ({escape(reserved["SelfName"])})'
+            lbl = QtWidgets.QLabel(text)
+            lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+            layout.addWidget(lbl)
+            return container
 
         if inactive:
-            text = f'<span style="color:#888">{text}</span>'
-        return text
+            lbl = QtWidgets.QLabel("تعطیل / غیرقابل رزرو")
+            lbl.setStyleSheet("color:#888;")
+            layout.addWidget(lbl)
+            return container
+
+        # غذاهای قابل رزرو → چک‌باکس
+        for food in meal["FoodMenu"]:
+            price = food["SelfMenu"][0]["Price"] if food.get("SelfMenu") else 0
+            food_name = food["FoodName"]
+            self_name = (
+                food["SelfMenu"][0]["SelfName"] if food.get("SelfMenu") else "نامشخص"
+            )
+
+            hbox = QtWidgets.QHBoxLayout()
+            cb = QtWidgets.QCheckBox()
+            cb.setStyleSheet("QCheckBox::indicator { width: 18px; height: 18px; }")
+
+            label_text = f"{escape(food_name)} <small style='color:#555'>— {format_price(price)} ({escape(self_name)})</small>"
+            lbl = QtWidgets.QLabel(label_text)
+            lbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+            lbl.setWordWrap(True)
+
+            hbox.addWidget(cb)
+            hbox.addWidget(lbl, 1)
+            layout.addLayout(hbox)
+
+            meal_info = {
+                "day": day["DayTitle"],
+                "date": day["DayDate"],
+                "meal": meal_name,
+                "food": food_name,
+                "self": self_name,
+                "price": price,
+            }
+            self.checkboxes.append((cb, price, meal_info))
+            cb.toggled.connect(self.update_summary)
+
+        layout.addStretch()
+        return container
+
+    def update_summary(self):
+        total = sum(price for cb, price, _ in self.checkboxes if cb.isChecked())
+        count = sum(1 for cb, _, _ in self.checkboxes if cb.isChecked())
+
+        if count == 0:
+            text = "غذا انتخاب نشده"
+        elif count == 1:
+            text = f"جمع قیمت: <b>{format_price(total)}</b> — یک غذا انتخاب شده"
+        else:
+            text = f"جمع قیمت: <b>{format_price(total)}</b> — <b>{count}</b> غذا انتخاب شده"
+
+        self.summary_label.setText(text)
+
+    def reset_selections(self):
+        for cb, _, _ in self.checkboxes:
+            cb.blockSignals(True)
+            cb.setChecked(False)
+            cb.blockSignals(False)
+        self.update_summary()
 
     def update_title(self):
         if not self.week_data:
-            self.setWindowTitle("منوی غذا — FRS")
+            self.setWindowTitle("منوی غذا — دانشگاه تربیت مدرس")
             return
         start = self.week_data[0]["DayDate"]
         end = self.week_data[-1]["DayDate"]
