@@ -3,6 +3,7 @@ import sys
 
 from PyQt6 import QtWidgets
 
+from core.api import LoginError
 from ui.login_dialog import LoginDialog
 from ui.main_window import MainWindow
 
@@ -26,7 +27,13 @@ def main():
     win.statusBar().showMessage("در حال ورود...")
     QtWidgets.QApplication.processEvents()
 
-    if not win.client.login(username, password):
+    try:
+        logged_in = win.client.login(username, password)
+    except LoginError as e:
+        QtWidgets.QMessageBox.critical(None, "خطا", str(e))
+        sys.exit(1)
+
+    if not logged_in:
         QtWidgets.QMessageBox.critical(
             None, "ورود ناموفق", "نام کاربری یا رمز عبور اشتباه است."
         )

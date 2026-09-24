@@ -29,11 +29,8 @@ git clone https://github.com/russellzparadox/FRS.git
 cd FRS
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install PyQt6 requests jdatetime
+pip install -r requirements.txt
 ```
-
-`requirements.txt` pins a larger set of packages. `pip install -r requirements.txt` also works on
-Linux and macOS, but it includes `uvloop`, which does not install on Windows.
 
 ## Usage
 

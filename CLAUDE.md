@@ -22,13 +22,7 @@ python main.py
 
 Run from the repo root: `main.py` imports `ui.*` and `core.*` as top-level packages.
 
-The only runtime dependencies the code actually uses are `PyQt6`, `requests` and `jdatetime`.
-`requirements.txt` is a full `pip freeze` of an older environment (FastAPI, Textual, uvicorn, etc.)
-and includes `uvloop`, which does not install on Windows. For a minimal install:
-
-```bash
-pip install PyQt6 requests jdatetime
-```
+Runtime dependencies are `PyQt6`, `requests` and `jdatetime`, pinned in `requirements.txt`.
 
 There are no tests, linter config or CI. The code is formatted in Black style (88-column lines,
 double quotes); keep new code consistent with that.
@@ -53,6 +47,10 @@ ui/main_window.py    MainWindow: week navigation, menu table, details panel, pri
 3. If the response contains a `<form action=...>`, it is the SAML/OIDC hand-off: collect all
    `name`/`value` inputs and `POST` them to the form action.
 4. Success is detected by keywords in the final page (`خروج`, `رزرو غذا`, `داشبورد`, `logout`).
+
+`login()` returns `True` on success and `False` when the credentials are rejected. Network errors,
+HTTP errors on the SAML hop and an unparseable login page raise `LoginError`; `main.py` shows its
+message. Keep that split so a server problem isn't reported as a wrong password.
 
 Cookies live on the shared `requests.Session`, so every later API call is authenticated.
 All requests use `verify=False` (urllib3 warnings are disabled) because the site's TLS chain does
@@ -98,16 +96,6 @@ bar message shows before the UI blocks.
 - User-facing strings and code comments are in Persian. Keep new UI text in Persian.
 - Any API text inserted into rich-text `QLabel`s or the details `QTextEdit` must go through
   `core.utils.escape` first.
-- `core/api.py` shows errors with `QMessageBox` directly, so it depends on a running `QApplication`.
+- `core/` has no Qt dependency: it raises exceptions and the `ui/` layer or `main.py` shows them.
+- Every `requests` call passes `timeout=`.
 - Never hardcode or log credentials. Don't commit `.venv`, `temp/` or `__pycache__`.
-
-## Known issues
-
-- `ui/__init__py.py` is misnamed (should be `ui/__init__.py`). Imports still work because Python 3
-  treats `ui/` as a namespace package.
-- `__pycache__/*.pyc` files are committed, including stale `core/auth.py` and `ui/login_window.py`
-  bytecode. `.gitignore` does not exclude `__pycache__/`.
-- The header comments in `ui/*.py` say `gui/...`; the directory is `ui/`.
-- `requirements.txt` is much larger than what the app needs (see Running).
-- In `FRSClient.login`, a failure in steps 2–4 that isn't an exception returns `False` with no
-  message; `main.py` then shows a generic "wrong username or password" error.

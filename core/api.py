@@ -5,9 +5,12 @@ import re
 from urllib.parse import urlencode
 
 import requests
-from PyQt6 import QtWidgets
 
 BASE_API = "https://frs.modares.ac.ir/api/v0/Reservation"
+
+
+class LoginError(Exception):
+    """ورود به دلیل خطای شبکه یا صفحه غیرمنتظره انجام نشد (نه رمز اشتباه)."""
 
 
 class FRSClient:
@@ -17,29 +20,25 @@ class FRSClient:
         requests.packages.urllib3.disable_warnings()
 
     def login(self, username: str, password: str) -> bool:
+        """ورود موفق: True، رمز اشتباه: False، خطای شبکه یا صفحه: LoginError."""
         try:
             resp = self.session.get(
                 "https://frs.modares.ac.ir/", verify=False, timeout=15
             )
             resp.raise_for_status()
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(None, "خطا", f"خطا در اتصال: {e}")
-            return False
+        except requests.RequestException as e:
+            raise LoginError(f"خطا در اتصال: {e}") from e
 
         match = re.search(
             r'<script id=["\']modelJson["\'].*?>(.*?)</script>', resp.text, re.DOTALL
         )
         if not match:
-            QtWidgets.QMessageBox.critical(
-                None, "خطا", "نتوانستم اطلاعات ورود را استخراج کنم."
-            )
-            return False
+            raise LoginError("نتوانستم اطلاعات ورود را استخراج کنم.")
 
         try:
             data = json.loads(html.unescape(match.group(1)))
-        except json.JSONDecodeError:
-            QtWidgets.QMessageBox.critical(None, "خطا", "خطا در تجزیه JSON صفحه ورود.")
-            return False
+        except json.JSONDecodeError as e:
+            raise LoginError("خطا در تجزیه JSON صفحه ورود.") from e
 
         login_url = "https://frs.modares.ac.ir" + data.get("loginUrl", "")
         antiforgery = data.get("antiForgery", {}).get("value", "")
@@ -58,6 +57,7 @@ class FRSClient:
                     "Referer": "https://frs.modares.ac.ir/",
                     "Content-Type": "application/x-www-form-urlencoded",
                 },
+                timeout=15,
             )
 
             # مرحله دوم SAML
@@ -69,15 +69,17 @@ class FRSClient:
             inputs = re.findall(r'name="([^"]+)"[^>]*value="([^"]*)"', r.text)
             form_data = {k: v for k, v in inputs}
 
-            final = self.session.post(form_action, data=form_data, verify=False)
+            final = self.session.post(
+                form_action, data=form_data, verify=False, timeout=15
+            )
+            final.raise_for_status()
             return any(
                 kw in final.text.lower()
                 for kw in ["خروج", "رزرو غذا", "داشبورد", "logout"]
             )
 
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(None, "خطا", f"خطای ورود: {e}")
-            return False
+        except requests.RequestException as e:
+            raise LoginError(f"خطای ورود: {e}") from e
 
     def get_week_menu(self, base_saturday: str, offset: int = 0):
         params = (

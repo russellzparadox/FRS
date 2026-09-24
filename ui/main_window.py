@@ -1,4 +1,4 @@
-# gui/main_window.py
+# ui/main_window.py
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from core.api import FRSClient

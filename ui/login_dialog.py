@@ -1,4 +1,4 @@
-# gui/login_dialog.py
+# ui/login_dialog.py
 from PyQt6 import QtCore, QtWidgets
 
 
